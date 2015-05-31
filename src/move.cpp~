@@ -1,0 +1,173 @@
+#include <ros/ros.h>
+
+#include <moveit/move_group_interface/move_group.h>
+#include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <baxter_core_msgs/EndEffectorCommand.h>
+
+#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/Point.h>
+#include <geometry_msgs/Quaternion.h>
+
+#include <moveit_msgs/DisplayTrajectory.h>
+
+class Move {
+    public:
+        Move();
+        void get_point(const geometry_msgs::Point&);
+        void open();
+        void close();
+        bool move(const geometry_msgs::Pose&);
+
+        moveit::planning_interface::MoveGroup mg;
+        moveit::planning_interface::PlanningSceneInterface plan;
+
+        ros::NodeHandle nh;
+        ros::Subscriber pt_sub;
+        ros::Publisher grip_pub;
+	ros::Publisher disp_pub;
+
+        geometry_msgs::Quaternion approach_pick;
+        geometry_msgs::Quaternion approach_drop;
+        geometry_msgs::Point drop;
+	moveit_msgs::DisplayTrajectory trajectory;
+
+        baxter_core_msgs::EndEffectorCommand msg_open;
+        baxter_core_msgs::EndEffectorCommand msg_close;
+};
+
+Move::Move() : mg("right_arm") {
+    approach_pick.x = 0.707;
+    approach_pick.y = 0;
+    approach_pick.z = 0.707;
+    approach_pick.w = 0;
+
+    approach_drop.x = 0.742014471757;
+    approach_drop.y = -0.670177574301;
+    approach_drop.z = -0.00191265099284;
+    approach_drop.w = 0.0165192122305;
+
+    drop.x = 0.0;
+    drop.y = -1.0;
+    drop.z = 0.8;
+
+    msg_open.id = 65538;
+    msg_open.command = "grip";
+
+    msg_close.id = 65538;
+    msg_close.command = "release";
+
+    mg.setPlanningTime(10.0);
+
+    pt_sub = nh.subscribe("/apc2/point", 1, &Move::get_point, this);
+    grip_pub = nh.advertise<baxter_core_msgs::EndEffectorCommand>(
+               "/robot/end_effector/right_gripper/command", 1);
+    disp_pub = nh.advertise<moveit_msgs::DisplayTrajectory>(
+		"/move_group/display_planned_path", 1);
+
+    open();
+}
+
+void Move::get_point(const geometry_msgs::Point& pt) {
+    ROS_INFO("> received point (%.02f, %.02f, %.02f)", pt.x, pt.y, pt.z);
+    
+    open();
+
+    ROS_INFO("> moving to approach");
+    geometry_msgs::Pose pose;
+    pose.orientation = approach_pick;
+    pose.position = pt;
+    pose.position.y = pt.y + 0.3;
+    if (!move(pose)) {
+        ROS_INFO("> movement failed, aborting");
+        return;
+    }
+
+    ROS_INFO("> moving to point");
+    pose.position = pt;
+    if (!move(pose)) {
+        ROS_INFO("> movement failed, aborting");
+        return;
+    }
+
+    close();
+
+    ROS_INFO("> moving back");
+    pose.position.y = pt.y + 0.3;
+    if (!move(pose)) {
+        ROS_INFO("> movement failed, aborting");
+        return;
+    }
+
+    ROS_INFO("> moving to drop");
+    pose.orientation = approach_drop;
+    pose.position = drop;
+    if (!move(pose)) {
+        ROS_INFO("> movement failed, aborting");
+        return;
+    }
+
+    open();
+}
+
+bool Move::move(const geometry_msgs::Pose& pose) {
+    ROS_INFO("> planning");
+    mg.setStartState(*mg.getCurrentState());
+    mg.setPoseTarget(pose);
+    //mg.setRandomTarget();
+    mg.setGoalTolerance(.3); //https://groups.google.com/forum/#!topic/moveit-users/yRthi64affg
+    ROS_INFO("> set pose");
+
+    moveit::planning_interface::MoveGroup::Plan plan;
+    if (mg.plan(plan)) {
+        ROS_INFO("> planning successful");
+    } else {
+        ROS_INFO("> planning failed");
+        return false;
+    }
+    ros::Duration(5).sleep();
+    /*
+    if (mg.execute(plan)) {
+        ROS_INFO("> execution successful");
+    } else {
+        ROS_INFO("> execution failed");
+        return false;
+    }
+    return true;
+    */
+    trajectory.trajectory_start = plan.start_state_;
+    trajectory.trajectory.push_back(plan.trajectory_);
+    disp_pub.publish(trajectory);
+
+    if (mg.asyncMove()) {
+        ROS_INFO("> execution successful");
+        return true;
+    } else {
+        ROS_INFO("> execution failed");
+        return false;
+    }
+}
+
+void Move::open() {
+    ROS_INFO("> opening grippers");
+    grip_pub.publish(msg_open);
+    ros::Duration(5).sleep();
+}
+
+void Move::close() {
+    ROS_INFO("> closing grippers");
+    grip_pub.publish(msg_close);
+    ros::Duration(5).sleep();
+}
+
+int main(int argc, char** argv) {
+    ROS_INFO("> init movement");
+    ros::init(argc, argv, "move");
+
+    Move m;
+
+    ros::AsyncSpinner spinner(4);
+    spinner.start();
+    ros::waitForShutdown();
+
+    return 0;
+}   

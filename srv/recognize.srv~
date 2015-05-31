@@ -1,0 +1,3 @@
+geometry_msgs/Point p
+---
+std_msgs/Boolean want_to_pick
