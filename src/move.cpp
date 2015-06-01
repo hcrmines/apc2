@@ -44,6 +44,7 @@ Move::Move() : mg("right_arm") {
     approach_drop.w = 0.0165192122305;
 
     mg.setPlanningTime(20.0);
+    mg.setGoalTolerance(0.1);
 
     move_sub = nh.subscribe("/apc2/move", 1, &Move::move, this);
     drop_sub = nh.subscribe("/apc2/drop", 1, &Move::drop, this);
@@ -98,7 +99,6 @@ bool Move::execute(const geometry_msgs::Pose& pose) {
     mg.setStartState(*mg.getCurrentState());
     mg.setPoseTarget(pose);
     //mg.setRandomTarget();
-    mg.setGoalTolerance(0);
     ROS_INFO("> set pose");
 
     moveit::planning_interface::MoveGroup::Plan plan;
