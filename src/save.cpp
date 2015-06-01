@@ -19,7 +19,6 @@ class Save {
 
         ros::NodeHandle nh;
         ros::Subscriber sub;
-	Eigen::Affine3f transform;
 
         bool saved;
 };
@@ -28,25 +27,19 @@ Save::Save() {
     saved = false;
     sub = nh.subscribe("/camera/depth/points", 1,
                                      &Save::save, this);
-    transform = Eigen::Affine3f::Identity();
-    transform.translation() << 0.43424, -0.1013, 0.48206;
-    transform.rotate(Eigen::AngleAxisf(-1.57, Eigen::Vector3f::UnitX()));
 }
 
 void Save::save(const sensor_msgs::PointCloud2& c) {
     if (saved) { return; }
     ROS_INFO("> received cloud");
-    ROS_INFO("> transformed cloud");
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr p (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::fromROSMsg(c, *p);
     ROS_INFO("> converted cloud");
-    pcl::transformPointCloud(*p, *p, transform);
-    ROS_INFO("> transformed cloud");
  
     pcl::io::savePCDFileASCII("/home/hcr-ws/ros_ws/src/apc2/data/bg.pcd", *p);
     saved = true;
-    ROS_INFO("> saved cloud");
+    ROS_INFO("> saved cloud, ctrl-C to exit");
 }
 
 int main(int argc, char** argv) {
