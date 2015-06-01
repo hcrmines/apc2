@@ -50,6 +50,14 @@ Pick::Pick() {
 
     recog = nh.serviceClient<apc2::recognize>("recognize");
 
+    baxter_core_msgs::EndEffectorCommand calib;
+    calib.id = 65538;
+    calib.command = "calibrate";
+    ROS_INFO("> calibrating grippers");
+    grip_pub.publish(calib);
+    ros::Duration(3).sleep();
+
+    // 65664 for left
     msg_open.id = 65538;
     msg_open.command = "release";
 
